@@ -1,74 +1,108 @@
-let paint = [];
-
-let prevPointer = [  [    { x: 0, y: 0 },    { x: 0, y: 0 },    { x: 0, y: 0 },    { x: 0, y: 0 }  ],
-  [    { x: 0, y: 0 },    { x: 0, y: 0 },    { x: 0, y: 0 },    { x: 0, y: 0 }  ]
-];
-
-const fingertips = [8, 12, 16, 20];
+const socket = io();
+let colorPicker, sizeSlider, canvas, gui, drawIsOn = false, receivedMouseX = 0, receivedMouseY = 0;
 
 function setup() {
-  sketch = createCanvas(1,1);
-  
-  const colorMap = [    [color(0, 0, 0), color(255, 0, 255), color(0, 0, 0), color(255, 255, 255)],
-    [color(255, 0, 0), color(0, 0, 0), color(0, 0, 0), color(255, 255, 0)]
-  ];
-  handsfree = new Handsfree({
-    showDebug: true,
-    hands: true
-  });
-  handsfree.enablePlugins('browser');
-  handsfree.plugin.pinchScroll.disable();
-  
-  buttonStart = createButton('Start WebcameraCatch');
-  buttonStart.class('handsfree-show-when-stopped');
-  buttonStart.class('handsfree-hide-when-loading');
-  buttonStart.mousePressed(() => handsfree.start());
+  canvas = createCanvas(windowWidth, windowHeight);
+  canvas.parent("sketch-container");
+  canvas.mousePressed(canvasMousePressed);
+  canvas.touchStarted(canvasTouchStarted);
 
-  buttonLoading = createButton('...loading...');
-  buttonLoading.class('handsfree-show-when-loading');
+  gui = createDiv('');
+  gui.parent('gui-container');
+  gui.addClass('open');
 
-  buttonStop = createButton('Stop Webcam');
-  buttonStop.class('handsfree-show-when-started');
-  buttonStop.mousePressed(() => handsfree.stop());
+  colorPicker = createColorPicker(color(255, 0, 100));
+  colorPicker.parent(gui);
+  colorPicker.addClass('color-picker');
+  colorPicker.input(handleColorPickerInput);
+
+  sizeSlider = createSlider(1, 100, 30);
+  sizeSlider.parent(gui);
+  sizeSlider.addClass('slider');
+  sizeSlider.input(handleSliderInputChange);
+
+  handleSliderInputChange();
+
+  background(255);
+  noStroke();
 }
-  
+
 function draw() {
-  drawHands();
+  if (drawIsOn) {
+    fill(colorPicker.color());
+    circle(mouseX, mouseY, sizeSlider.value());
+  }
 }
 
-function drawHands() {
-  const hands = handsfree.data?.hands;
-  
-  if (!hands?.landmarks) return;
-  
-  hands.landmarks.forEach((hand, handIndex) => {
-    hand.forEach((landmark, landmarkIndex) => {
-   
-      if (colorMap[handIndex]) {
-        switch (landmarkIndex) {
-          case 8: fill(colorMap[handIndex][0]); break;
-          case 12: fill(colorMap[handIndex][1]); break;
-          case 16: fill(colorMap[handIndex][2]); break;
-          case 20: fill(colorMap[handIndex][3]); break;
-          default: fill(color(255, 255, 255));
-        }                
-      }
-      
-      if (handIndex === 0 && landmarkIndex === 8) {
-        stroke(color(255, 255, 255));
-        strokeWeight(50);
-        circleSize = 40;
-      } else {
-        stroke(color(0, 0, 0));
-        strokeWeight(0);
-        circleSize = 10;
-      }
-      
-      circle(
-        sketch.width - landmark.x * sketch.width,
-        landmark.y * sketch.height,
-        circleSize
-      );
-    });
+function canvasMousePressed() {
+  drawIsOn = true;
+}
+
+function mouseReleased() {
+  drawIsOn = false;
+}
+
+function mouseDragged() {
+  if (!drawIsOn) {
+    return;
+  }
+
+  socket.emit("drawing", {
+    xpos: mouseX / width,
+    ypos: mouseY / height,
+    color: colorPicker.color(),
+    size: sizeSlider.value()
   });
 }
+
+function canvasTouchStarted() {
+  drawIsOn = true;
+}
+
+function touchEnded() {
+  drawIsOn = false;
+}
+
+function touchMoved() {
+  if (!drawIsOn) {
+    return;
+  }
+
+  socket.emit("drawing", {
+    xpos: mouseX / width,
+    ypos: mouseY / height,
+    color: colorPicker.color(),
+    size: sizeSlider.value()
+  });
+}
+
+function onDrawingEvent(data) {
+  fill(data.color);
+  circle(data.xpos * width, data.ypos * height, data.size); //slightly nicer on mobile
+}
+
+function handleColorPickerInput() {
+  fill(colorPicker.color());
+}
+
+function handleSliderInputChange() {
+  sizeSlider.style('width', '80px');
+  sizeSlider.style('margin-left', '10px');
+  sizeSlider.style('margin-right', '10px');
+}
+
+function windowResized() {}
+
+socket.on("connect", () => {
+  console.log(socket.id);
+});
+
+socket.on("disconnect", () => {
+  console.log(socket.id);
+});
+
+socket.on("drawing", (data) => {
+  console.log(data);
+
+  onDrawingEvent(data);
+});
